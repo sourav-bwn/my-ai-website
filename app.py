@@ -42,6 +42,7 @@ def call_openai(message):
                 {"role": "user", "content": message}
             ]
         },
+        timeout=OPENAI_TIMEOUT,
     )
     return response.json()
 
@@ -61,18 +62,23 @@ def chat():
         return jsonify({"reply": f"Bad request: {error}"}), 400
 
     if not API_KEY:
-        return jsonify({"reply": "Error: API key missing"})
+        return jsonify({"reply": "Error: API key missing"}), 500
 
     try:
         result = call_openai(message)
-    except Exception as e:
-        return jsonify({"reply": "Server Error: " + str(e)})
+    except requests.Timeout:
+        return jsonify({"reply": "Error: the AI service timed out, please try again"}), 504
+    except requests.RequestException:
+        return jsonify({"reply": "Error: could not reach the AI service"}), 502
 
-    # If API returns error
+    # If API returns error (bad key, quota, model issue)
     if "error" in result:
-        return jsonify({"reply": "API Error: " + str(result["error"])})
+        return jsonify({"reply": "API Error: " + str(result["error"])}), 502
 
-    reply = result["choices"][0]["message"]["content"]
+    try:
+        reply = result["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return jsonify({"reply": "Error: unexpected response from the AI service"}), 502
 
     return jsonify({"reply": reply})
 
